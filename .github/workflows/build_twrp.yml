@@ -1,0 +1,69 @@
+name: Compilar TWRP para Galaxy Tab A7 (gta3xlwifi)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Compilando TWRP en la nube
+    runs-on: ubuntu-20.04
+
+    steps:
+    - name: Liberar espacio en disco
+      uses: jlumbroso/free-disk-space@main
+      with:
+        tool-cache: true
+        android: false
+        dotnet: true
+        haskell: true
+        large-packages: true
+
+    - name: Instalar dependencias necesarias
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          g++-multilib gcc-multilib lib32ncurses5-dev lib32readline-dev \
+          lib32z1-dev flex bison git gperf libgl1-mesa-dev libssl-dev \
+          zip curl zlib1g-dev ccache libxml2-utils xsltproc unzip
+        
+        mkdir -p ~/bin
+        curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
+        chmod a+x ~/bin/repo
+        echo "$HOME/bin" >> $GITHUB_PATH
+
+    - name: Configurar Git
+      run: |
+        git config --global user.name "GitHub Actions"
+        git config --global user.email "actions@github.com"
+
+    - name: Inicializar repositorio TWRP
+      run: |
+        mkdir twrp
+        cd twrp
+        repo init --depth=1 -u git://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp.git -b twrp-11
+
+    - name: Clonar el Device Tree para gta3xlwifi
+      run: |
+        cd twrp
+        git clone https://github.com/Magendanz/android_device_samsung_gta3xlwifi.git -b android-11.0 device/samsung/gta3xlwifi
+
+    - name: Sincronizar fuentes
+      run: |
+        cd twrp
+        repo sync -c -j$(nproc) --force-sync --no-clone-bundle --no-tags
+
+    - name: Compilar Recovery
+      run: |
+        cd twrp
+        export ALLOW_MISSING_DEPENDENCIES=true
+        source build/envsetup.sh
+        lunch twrp_gta3xlwifi-eng
+        mka recoveryimage
+
+    - name: Subir el archivo compilado (Artifacts)
+      uses: actions/upload-artifact@v4
+      with:
+        name: TWRP_gta3xlwifi
+        path: |
+          twrp/out/target/product/gta3xlwifi/recovery.img
+          twrp/out/target/product/gta3xlwifi/recovery.tar
